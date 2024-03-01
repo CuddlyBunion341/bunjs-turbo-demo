@@ -39,9 +39,9 @@ const chatRoomHTML = () => `
   <div id="chat-feed">
     ${messages.map(messageHTML).join("")}
   </div>
-  <form id="chat-form">
+  <form id="chat-form" action="/submit" method="post">
     <label for="message-input">Message</label>
-    <input id="message-input" name="message">
+    <input id="message-input" name="message" required>
     <input type="submit" value="Send">
   </form>
 `
@@ -50,10 +50,24 @@ const topic = "my-topic";
 
 Bun.serve({
   port: 8080,
-  fetch(req, server) {
+  async fetch(req, server) {
+    const url = new URL(req.url);
+
+    if (url.pathname === "/submit") {
+      const formData = await req.formData()
+      const message = formData.get("message")
+
+      if (typeof message !== "string") return new Response("Invalid message", { status: 400 })
+      if (message.trim() === "") return new Response("", { status: 204 })
+
+      const chatMessage = `Anonymous: ${message}`
+
+      messages.push(chatMessage)
+      return new Response(messageStream(chatMessage), { headers: { "Content-Type": "text/vnd.turbo-stream.html", } });
+    }
+
     if (server.upgrade(req)) { return }
 
-    const url = new URL(req.url);
     if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML()), {
       headers: {
         "Content-Type": "text/html",
