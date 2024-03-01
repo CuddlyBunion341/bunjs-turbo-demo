@@ -5,10 +5,10 @@ const layout = (title: string, content: string, options: {clientId: string, user
     <head>
       <title>${title}</title>
       <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css">
-      <script src="./client.js" defer></script>
       <script type="module">
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
+      <script src="./client.js" type="module" defer></script>
     </head>
     <body>
       <header>
@@ -65,9 +65,9 @@ const chatRoomHTML = (clientId: string) => `
   <hr>
   <div id="chat-feed">
   </div>
-  <form id="chat-form" action="/submit" method="post">
+  <form id="chat-form" action="/submit" method="post" data-controller="form" data-action="form#handleSubmit">
     <label for="message-input">Message</label>
-    <input id="message-input" name="message" required>
+    <input id="message-input" name="message" data-form-target="input" required >
     <input type="hidden" name="clientId" value="${clientId}">
     <input type="submit" value="Send">
   </form>
