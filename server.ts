@@ -1,6 +1,6 @@
 import { ServerWebSocket } from "bun";
 
-const layout = (title: string, content: string) => `
+const layout = (title: string, content: string, options: {clientId: string, username: string}) => `
   <html>
     <head>
       <title>${title}</title>
@@ -9,7 +9,7 @@ const layout = (title: string, content: string) => `
       <script type="module">
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
-      <turbo-stream-source src="ws://localhost:${port}/subscribe" />
+      <turbo-stream-source src="ws://localhost:${port}/subscribe?clientId=${options.clientId}&username=${options.username}" />
       <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name"STREAM-${Math.random()}" />
     </head>
     <body>
@@ -17,7 +17,7 @@ const layout = (title: string, content: string) => `
         <h1>Turbo Streams</h1>
         <p>Bring your application to live with turbo streams!</p>
       </header>
-      <h1>${title}</h1>
+      <h2>${title}</h2>
       ${content}
     </body>
   </html>
@@ -45,7 +45,10 @@ const streamHTML = (content: string, options = { action: "append", target: "chat
   </turbo-stream>
 `
 
-const chatRoomHTML = () => `
+const streamMessage = (message: string, own: boolean, streamOptions = { action: "append", target: "chat-feed" }) =>
+  streamHTML(own ? ownMessageHTML(message) : messageHTML(message), streamOptions)
+
+const chatRoomHTML = (clientId: string) => `
   <p>This is a chatroom</p>
   <mark id="connection-status">Connecting...</mark>
   <div id="chat-feed">
@@ -53,9 +56,11 @@ const chatRoomHTML = () => `
   <form id="chat-form" action="/submit" method="post">
     <label for="message-input">Message</label>
     <input id="message-input" name="message" required>
+    <input type="hidden" name="clientId" value="${clientId}">
     <input type="submit" value="Send">
   </form>
 `
+
 
 const generateUUID = () => {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
@@ -71,9 +76,21 @@ const generateUsername = () => {
   return `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${Math.floor(Math.random() * 100)}`
 }
 
+const generateUniqueUsername = (users: Record<ClientId, Username>) => {
+  const usernames = Object.values(users)
+  while(true) {
+    const username = generateUsername()
+    const userExists = usernames.find(user => user === username) !== undefined
+    if (!userExists) return username
+  }
+}
+
 const topic = "my-topic";
 
-const sessions = new Map<string, string>()
+type ClientId = string
+type Username = string
+
+const users: Record<ClientId, Username> = {}
 const port = 8080
 
 type ServerData = { username: string }
@@ -86,48 +103,41 @@ Bun.serve<ServerData>({
     const url = new URL(req.url);
 
     if (url.pathname === "/subscribe") {
-      const sessionId = generateUUID()
-      const username = generateUsername()
-      sessions.set(sessionId.toString(), username)
-      if (server.upgrade(req, {
-        headers: {
-          "Set-Cookie": `TurboDemoSessionId=${sessionId}`,
-        },
-        data: { username }
-      })) { return }
+      const clientId = url.searchParams.get("clientId")
+      if (!clientId) return new Response("Invalid clientId", { status: 400 })
+
+      let username = url.searchParams.get("username")
+      if (!username) username = generateUniqueUsername(users)
+
+      users[clientId] = username
+
+      if (server.upgrade(req, { data: { username } })) { return }
       return new Response("Could not upgrade", { status: 500 })
     }
 
     if (url.pathname === "/submit") {
-      if (server.upgrade(req)) { return }
-
       const formData = await req.formData()
       const message = formData.get("message")
+      const clientId = formData.get("clientId")
+      if (typeof clientId !== "string") return new Response("Invalid clientId", { status: 400 })
 
-      const sessionId = req.headers.get("Cookie")?.split("=")[1]
-      if (!sessionId) return new Response("No session", { status: 400 })
-      const username = sessions.get(sessionId)
+      const username = users[clientId]
 
-      if (typeof message !== "string") return new Response("Invalid message", { status: 400 })
-      if (message.trim() === "") return new Response("", { status: 204 })
+      if (typeof message !== "string" || message.trim() === "") return new Response("Invalid message", { status: 400 })
 
       sockets.forEach(socket => {
-        if (socket.data.username === username) {
-          socket.send(streamHTML(ownMessageHTML(`You: ${message}`)))
-        }
-        else {
-          socket.send(streamHTML(messageHTML(`${username}: ${message}`)))
-        }
+        socket.send(streamMessage(`${username}: ${message}`, socket.data.username === username))
       })
 
       return new Response("", { status: 204 })
     }
 
-    if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML()), {
-      headers: {
-        "Content-Type": "text/html",
-      }
-    });
+    if (url.pathname === "/") {
+      const clientId = generateUUID()
+      const username = generateUniqueUsername(users)
+      return new Response(layout("ChatRoom", chatRoomHTML(clientId), {clientId, username}), { headers: { "Content-Type": "text/html" }})
+    }
+
     if (url.pathname === "/client.js") return new Response(Bun.file("./client.js"), { headers: { "Content-Type": "text/javascript" } });
     return new Response("404!");
   },
@@ -136,26 +146,13 @@ Bun.serve<ServerData>({
       ws.subscribe(topic)
       sockets.push(ws)
       sockets.forEach(socket => {
-        let message = ""
-
-        if (socket.data.username === ws.data.username) {
-          message = ownMessageHTML(`You joined the chat as '${ws.data.username}'`)
-        } else {
-          message = messageHTML(`${ws.data.username} joined the chat`)
-        }
-
-        socket.send(streamHTML(message))
+        socket.send(streamMessage(`${ws.data.username} joined the chat`, socket.data.username === ws.data.username))
       })
     },
     message(ws, message) { },
     close(ws) {
       sockets.forEach(socket => {
-        if (socket.data.username === ws.data.username) {
-          socket.send(streamHTML(ownMessageHTML(`You left the chat`)))
-        }
-        else {
-          socket.send(streamHTML(messageHTML(`${ws.data.username} left the chat`)))
-        }
+        socket.send(streamMessage(`${ws.data.username} left the chat`, socket.data.username === ws.data.username))
       })
       ws.unsubscribe(topic)
       const socketIndex = sockets.indexOf(ws)
