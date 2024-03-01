@@ -48,9 +48,17 @@ const streamHTML = (content: string, options = { action: "append", target: "chat
 const streamMessage = (message: string, own: boolean, streamOptions = { action: "append", target: "chat-feed" }) =>
   streamHTML(own ? ownMessageHTML(message) : messageHTML(message), streamOptions)
 
+const userHTML = (username: string) => `
+  <li id="user-${username}">${username}</li>
+`
+
 const chatRoomHTML = (clientId: string) => `
   <p>This is a chatroom</p>
-  <mark id="connection-status">Connecting...</mark>
+  <strong>Users in Chat:</strong>
+  <ul id="user-list">
+    ${Object.values(users).map(userHTML).join("")}
+  </ul>
+  <hr>
   <div id="chat-feed">
   </div>
   <form id="chat-form" action="/submit" method="post">
@@ -93,7 +101,7 @@ type Username = string
 const users: Record<ClientId, Username> = {}
 const port = 8080
 
-type ServerData = { username: string }
+type ServerData = { username: string, clientId: string }
 
 const sockets: ServerWebSocket<ServerData>[] = []
 
@@ -111,7 +119,7 @@ Bun.serve<ServerData>({
 
       users[clientId] = username
 
-      if (server.upgrade(req, { data: { username } })) { return }
+      if (server.upgrade(req, { data: { username, clientId: clientId } })) { return }
       return new Response("Could not upgrade", { status: 500 })
     }
 
@@ -147,13 +155,16 @@ Bun.serve<ServerData>({
       sockets.push(ws)
       sockets.forEach(socket => {
         socket.send(streamMessage(`${ws.data.username} joined the chat`, socket.data.username === ws.data.username))
+        socket.send(streamHTML(`<li id="user-${ws.data.username}">${ws.data.username}</li>`, { action: "append", target: "user-list" }))
       })
     },
     message(ws, message) { },
     close(ws) {
       sockets.forEach(socket => {
+        socket.send(streamHTML(``, { action: "remove", target: `user-${ws.data.username}` }))
         socket.send(streamMessage(`${ws.data.username} left the chat`, socket.data.username === ws.data.username))
       })
+      delete users[ws.data.clientId]
       ws.unsubscribe(topic)
       const socketIndex = sockets.indexOf(ws)
       if (socketIndex > -1) {
