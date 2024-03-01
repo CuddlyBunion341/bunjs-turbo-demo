@@ -35,11 +35,10 @@ const messageStream = (message: string) => `
   </turbo-stream>
 `
 
-const chatRoomHTML = (messages: string[]) => `
+const chatRoomHTML = () => `
   <p>This is a chatroom</p>
   <mark id="connection-status">Connecting...</mark>
   <div id="chat-feed">
-    ${messages.map(messageHTML).join("")}
   </div>
   <form id="chat-form" action="/submit" method="post">
     <label for="message-input">Message</label>
@@ -49,7 +48,6 @@ const chatRoomHTML = (messages: string[]) => `
 `
 
 const topic = "my-topic";
-const messages = ["Chatroom started"];
 
 const sessions = new Map<string, string>()
 let userCount = 0
@@ -59,9 +57,10 @@ Bun.serve({
   async fetch(req, server) {
     const url = new URL(req.url);
 
-   if (url.pathname === "/subscribe") {
+    if (url.pathname === "/subscribe") {
+      console.log("Subscribing to topic")
       const sessionId = Math.random()
-      sessions.set(sessionId.toString(), `User ${++userCount}`)
+      sessions.set(sessionId.toString(), `Anonymous`)
       if (server.upgrade(req, {
         headers: {
           "Set-Cookie": `TurboDemoSessionId=${sessionId}`,
@@ -85,13 +84,22 @@ Bun.serve({
       if (typeof message !== "string") return new Response("Invalid message", { status: 400 })
       if (message.trim() === "") return new Response("", { status: 204 })
 
+      if (server.upgrade(req, {
+        headers: {
+          "Set-Cookie": `TurboDemoSessionId=${sessionId}`,
+        },
+        data: {
+          username: sessionId,
+        }
+      })) { return }
+
       const chatMessage = `${username}: ${message}`
       server.publish(topic, messageStream(chatMessage))
 
       return new Response("", { status: 204 })
     }
 
-    if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML(messages)), {
+    if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML()), {
       headers: {
         "Content-Type": "text/html",
       }
