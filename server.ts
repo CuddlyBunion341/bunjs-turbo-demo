@@ -16,18 +16,31 @@ const layout = (title: string, content: string) => `
       </div>
     </body>
   </html>
-`;
+`
+
+const messageHTML = (message: string) => `
+  <p class="notice">
+    ${message}
+  </p>
+`
+
+const topic = "my-topic";
 
 Bun.serve({
   port: 8080,
-  fetch(req) {
+  fetch(req, server) {
+    if (server.upgrade(req)) {
+      return
+    }
+
     const url = new URL(req.url);
     if (url.pathname === "/") return new Response(layout("Chatroom", `
     <p>This is a chatroom</p>
+    <mark id="connection-status"></mark>
     <div id="chat-feed"></div>
     <form id="chat-form">
       <label for="message-input">Message</label>
-      <input id="message-input">
+      <input id="message-input" name="message">
       <input type="submit" value="Send">
     </form>`), {headers});
     if (url.pathname === "/client.js") return new Response(Bun.file("./client.js"), {headers: {"Content-Type": "text/javascript"}});
@@ -36,15 +49,18 @@ Bun.serve({
   websocket: {
     open(ws) {
       console.log("Websocket opened")
-      ws.subscribe("my-topic")
+      ws.subscribe(topic)
+      ws.publishText(topic, messageHTML("Someone joined the chat"))
     },
     message(ws, message) {
-      console.log("Websocket received message: ", message)
-      ws.send("Hello from server");
+      console.log("Websocket received: ", message)
+      ws.publishText(topic, messageHTML(`Anonymous: ${message}`))
     },
     close(ws) {
       console.log("Websocket closed")
-    }
+      ws.publishText(topic, messageHTML("Someone left the chat"))
+    },
+    publishToSelf: true
   }
 });
 
