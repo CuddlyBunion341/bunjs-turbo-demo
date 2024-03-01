@@ -9,7 +9,6 @@ const layout = (title: string, content: string, options: {clientId: string, user
       <script type="module">
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
-      <turbo-stream-source src="ws://localhost:${port}/subscribe?clientId=${options.clientId}&username=${options.username}" />
     </head>
     <body>
       <header>
@@ -23,6 +22,7 @@ const layout = (title: string, content: string, options: {clientId: string, user
       <footer>
         Provided to you by <a href="https://github.com/CuddlyBunion341">CuddlyBunion341</a> @ <a href="https://www.renuo.ch/">Renuo AG</a>
       </footer>
+      <turbo-stream-source src="ws://localhost:${port}/subscribe?clientId=${options.clientId}&username=${options.username}" />
     </body>
   </html>
 `
