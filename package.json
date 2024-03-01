@@ -1,6 +1,6 @@
 {
   "name": "bunjs-turbo-demo",
-  "module": "index.ts",
+  "module": "server.ts",
   "type": "module",
   "devDependencies": {
     "bun-types": "latest"
