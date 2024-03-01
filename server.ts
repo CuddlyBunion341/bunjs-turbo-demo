@@ -1,4 +1,4 @@
-import { ServerWebSocket } from "bun";
+import type { ServerWebSocket } from "bun";
 
 const layout = (title: string, content: string, options: {clientId: string, username: string}) => `
   <html>
@@ -10,15 +10,19 @@ const layout = (title: string, content: string, options: {clientId: string, user
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
       <turbo-stream-source src="ws://localhost:${port}/subscribe?clientId=${options.clientId}&username=${options.username}" />
-      <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name"STREAM-${Math.random()}" />
     </head>
     <body>
       <header>
         <h1>Turbo Streams</h1>
         <p>Bring your application to live with turbo streams!</p>
       </header>
-      <h2>${title}</h2>
-      ${content}
+      <main>
+        <h2>${title}</h2>
+        ${content}
+      </main>
+      <footer>
+        Provided to you by <a href="https://github.com/CuddlyBunion341">CuddlyBunion341</a> @ <a href="https://www.renuo.ch/">Renuo AG</a>
+      </footer>
     </body>
   </html>
 `
