@@ -8,7 +8,7 @@ const layout = (title: string, content: string) => `
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
       <turbo-stream-source src="ws://localhost:8080/subscribe" />
-      <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name="..."/>
+      <turbo-cable-stream-source channel="Turbo::StreamsChannel" />
     </head>
     <body>
       <header>
@@ -74,6 +74,9 @@ Bun.serve({
     }
 
     if (url.pathname === "/submit") {
+      if (server.upgrade(req)) { return }
+      console.log("Upgrade failed")
+
       const formData = await req.formData()
       const message = formData.get("message")
 
@@ -111,18 +114,18 @@ Bun.serve({
     open(ws) {
       console.log("Websocket opened")
       ws.subscribe(topic)
-      ws.publishText(topic, messageStream("Someone joined the chat"))
+      ws.send(messageStream("Someone joined the chat"))
     },
     message(ws, message) {
       console.log("Websocket received: ", message)
       if (typeof message == "string" && message.trim() === "") return
-      ws.publishText(topic, messageStream(`SOME MESSAGE: ${message}`))
+      ws.send(messageStream(`SOME MESSAGE: ${message}`))
     },
     close(ws) {
       console.log("Websocket closed")
-      ws.publishText(topic, messageStream("Someone left the chat"))
+      ws.send(messageStream("Someone left the chat"))
     },
-    publishToSelf: true
+    // publishToSelf: true
   }
 });
 
