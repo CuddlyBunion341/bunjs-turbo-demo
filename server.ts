@@ -1,9 +1,14 @@
+const messages: string[] = []
+
 const layout = (title: string, content: string) => `
   <html>
     <head>
       <title>${title}</title>
       <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css">
       <script src="./client.js" defer></script>
+      <script type="module">
+        import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
+      </script>
     </head>
     <body>
       <div class="container">
@@ -20,10 +25,20 @@ const messageHTML = (message: string) => `
   </p>
 `
 
+const messageStream = (message: string) => `
+  <turbo-stream action="append" target="chat-feed">
+    <template>
+      ${messageHTML(message)}
+    </template>
+  </turbo-stream>
+`
+
 const chatRoomHTML = () => `
   <p>This is a chatroom</p>
-  <mark id="connection-status"></mark>
-  <div id="chat-feed"></div>
+  <mark id="connection-status">Connecting...</mark>
+  <div id="chat-feed">
+    ${messages.map(messageHTML).join("")}
+  </div>
   <form id="chat-form">
     <label for="message-input">Message</label>
     <input id="message-input" name="message">
@@ -51,15 +66,16 @@ Bun.serve({
     open(ws) {
       console.log("Websocket opened")
       ws.subscribe(topic)
-      ws.publishText(topic, messageHTML("Someone joined the chat"))
+      ws.publishText(topic, messageStream("Someone joined the chat"))
     },
     message(ws, message) {
       console.log("Websocket received: ", message)
-      ws.publishText(topic, messageHTML(`Anonymous: ${message}`))
+      if (typeof message == "string" && message.trim() === "") return
+      ws.publishText(topic, messageStream(`Anonymous: ${message}`))
     },
     close(ws) {
       console.log("Websocket closed")
-      ws.publishText(topic, messageHTML("Someone left the chat"))
+      ws.publishText(topic, messageStream("Someone left the chat"))
     },
     publishToSelf: true
   }
