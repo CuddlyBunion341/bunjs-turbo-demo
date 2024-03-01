@@ -1,5 +1,3 @@
-const messages: string[] = []
-
 const layout = (title: string, content: string) => `
   <html>
     <head>
@@ -10,12 +8,15 @@ const layout = (title: string, content: string) => `
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
       <turbo-stream-source src="ws://localhost:8080/subscribe" />
+      <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name="..."/>
     </head>
     <body>
-      <div class="container">
-        <h1>${title}</h1>
-        ${content}
-      </div>
+      <header>
+        <h1>Turbo Streams</h1>
+        <p>Bring your application to live with turbo streams!</p>
+      </header>
+      <h1>${title}</h1>
+      ${content}
     </body>
   </html>
 `
@@ -34,7 +35,7 @@ const messageStream = (message: string) => `
   </turbo-stream>
 `
 
-const chatRoomHTML = () => `
+const chatRoomHTML = (messages: string[]) => `
   <p>This is a chatroom</p>
   <mark id="connection-status">Connecting...</mark>
   <div id="chat-feed">
@@ -48,6 +49,10 @@ const chatRoomHTML = () => `
 `
 
 const topic = "my-topic";
+const messages = ["Chatroom started"];
+
+const sessions = new Map<string, string>()
+let userCount = 0
 
 Bun.serve({
   port: 8080,
@@ -55,7 +60,16 @@ Bun.serve({
     const url = new URL(req.url);
 
    if (url.pathname === "/subscribe") {
-      if (server.upgrade(req)) { return }
+      const sessionId = Math.random()
+      sessions.set(sessionId.toString(), `User ${++userCount}`)
+      if (server.upgrade(req, {
+        headers: {
+          "Set-Cookie": `TurboDemoSessionId=${sessionId}`,
+        },
+        data: {
+          username: sessionId,
+        }
+      })) { return }
       console.log("Could not upgrade")
       return new Response("Could not upgrade", { status: 500 })
     }
@@ -64,18 +78,20 @@ Bun.serve({
       const formData = await req.formData()
       const message = formData.get("message")
 
+      const sessionId = req.headers.get("Cookie")?.split("=")[1]
+      if (!sessionId) return new Response("No session", { status: 400 })
+      const username = sessions.get(sessionId)
+
       if (typeof message !== "string") return new Response("Invalid message", { status: 400 })
       if (message.trim() === "") return new Response("", { status: 204 })
 
-      const chatMessage = `Anonymous: ${message}`
-      messages.push(chatMessage)
-
+      const chatMessage = `${username}: ${message}`
       server.publish(topic, messageStream(chatMessage))
 
       return new Response("", { status: 204 })
     }
 
-    if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML()), {
+    if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML(messages)), {
       headers: {
         "Content-Type": "text/html",
       }
