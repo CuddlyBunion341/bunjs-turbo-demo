@@ -24,15 +24,23 @@ const layout = (title: string, content: string) => `
 `
 
 const messageHTML = (message: string) => `
+    <p class="notice">
+      <code>
+        ${message}
+      </code>
+    </p>
+`
+
+const ownMessageHTML = (message: string) => `
   <p class="notice">
     ${message}
   </p>
 `
 
-const messageStream = (message: string) => `
-  <turbo-stream action="append" target="chat-feed">
+const streamHTML = (content: string, options = { action: "append", target: "chat-feed" }) => `
+  <turbo-stream action="${options.action}" target="${options.target}">
     <template>
-      ${messageHTML(message)}
+      ${content}
     </template>
   </turbo-stream>
 `
@@ -49,14 +57,26 @@ const chatRoomHTML = () => `
   </form>
 `
 
+const generateUUID = () => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0,
+      v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+const generateUsername = () => {
+  const adjectives = ["Red", "Green", "Blue", "Yellow", "Purple", "Orange", "Pink", "Black", "White", "Grey"]
+  const nouns = ["Dog", "Cat", "Bird", "Fish", "Lion", "Tiger", "Bear", "Elephant", "Monkey", "Giraffe"]
+  return `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${Math.floor(Math.random() * 100)}`
+}
+
 const topic = "my-topic";
 
 const sessions = new Map<string, string>()
 const port = 8080
 
-type ServerData = {
-  username: string
-}
+type ServerData = { username: string }
 
 const sockets: ServerWebSocket<ServerData>[] = []
 
@@ -66,25 +86,20 @@ Bun.serve<ServerData>({
     const url = new URL(req.url);
 
     if (url.pathname === "/subscribe") {
-      console.log("Subscribing to topic")
-      const sessionId = Math.random()
-      sessions.set(sessionId.toString(), `Anonymous`)
+      const sessionId = generateUUID()
+      const username = generateUsername()
+      sessions.set(sessionId.toString(), username)
       if (server.upgrade(req, {
         headers: {
           "Set-Cookie": `TurboDemoSessionId=${sessionId}`,
         },
-        data: {
-          username: sessionId,
-        }
+        data: { username }
       })) { return }
-      console.log("Could not upgrade")
       return new Response("Could not upgrade", { status: 500 })
     }
 
     if (url.pathname === "/submit") {
-      console.log(sockets)
       if (server.upgrade(req)) { return }
-      console.log("Upgrade failed")
 
       const formData = await req.formData()
       const message = formData.get("message")
@@ -96,17 +111,14 @@ Bun.serve<ServerData>({
       if (typeof message !== "string") return new Response("Invalid message", { status: 400 })
       if (message.trim() === "") return new Response("", { status: 204 })
 
-      if (server.upgrade(req, {
-        headers: {
-          "Set-Cookie": `TurboDemoSessionId=${sessionId}`,
-        },
-        data: {
-          username: sessionId,
+      sockets.forEach(socket => {
+        if (socket.data.username === username) {
+          socket.send(streamHTML(ownMessageHTML(`You: ${message}`)))
         }
-      })) { return }
-
-      const chatMessage = `${username}: ${message}`
-      server.publish(topic, messageStream(chatMessage))
+        else {
+          socket.send(streamHTML(messageHTML(`${username}: ${message}`)))
+        }
+      })
 
       return new Response("", { status: 204 })
     }
@@ -121,25 +133,31 @@ Bun.serve<ServerData>({
   },
   websocket: {
     open(ws) {
-      console.log("Websocket opened")
       ws.subscribe(topic)
       sockets.push(ws)
       sockets.forEach(socket => {
-        socket.send(messageStream(`${ws.data.username} joined the chat`))
+        let message = ""
+
+        if (socket.data.username === ws.data.username) {
+          message = ownMessageHTML(`You joined the chat as '${ws.data.username}'`)
+        } else {
+          message = messageHTML(`${ws.data.username} joined the chat`)
+        }
+
+        socket.send(streamHTML(message))
       })
     },
-    message(ws, message) {
-      console.log(ws)
-      console.log("Websocket received: ", message)
-      if (typeof message == "string" && message.trim() === "") return
-      ws.send(messageStream(`SOME MESSAGE: ${message}`))
-    },
+    message(ws, message) { },
     close(ws) {
-      console.log("Websocket closed")
-      ws.unsubscribe(topic)
       sockets.forEach(socket => {
-        socket.send(messageStream(`${ws.data.username} left the chat`))
+        if (socket.data.username === ws.data.username) {
+          socket.send(streamHTML(ownMessageHTML(`You left the chat`)))
+        }
+        else {
+          socket.send(streamHTML(messageHTML(`${ws.data.username} left the chat`)))
+        }
       })
+      ws.unsubscribe(topic)
       const socketIndex = sockets.indexOf(ws)
       if (socketIndex > -1) {
         sockets.splice(socketIndex, 1)
