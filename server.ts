@@ -1,3 +1,5 @@
+import { ServerWebSocket } from "bun";
+
 const layout = (title: string, content: string) => `
   <html>
     <head>
@@ -7,8 +9,8 @@ const layout = (title: string, content: string) => `
       <script type="module">
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
-      <turbo-stream-source src="ws://localhost:8080/subscribe" />
-      <turbo-cable-stream-source channel="Turbo::StreamsChannel" />
+      <turbo-stream-source src="ws://localhost:${port}/subscribe" />
+      <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name"STREAM-${Math.random()}" />
     </head>
     <body>
       <header>
@@ -50,10 +52,16 @@ const chatRoomHTML = () => `
 const topic = "my-topic";
 
 const sessions = new Map<string, string>()
-let userCount = 0
+const port = 8080
 
-Bun.serve({
-  port: 8080,
+type ServerData = {
+  username: string
+}
+
+const sockets: ServerWebSocket<ServerData>[] = []
+
+Bun.serve<ServerData>({
+  port,
   async fetch(req, server) {
     const url = new URL(req.url);
 
@@ -74,6 +82,7 @@ Bun.serve({
     }
 
     if (url.pathname === "/submit") {
+      console.log(sockets)
       if (server.upgrade(req)) { return }
       console.log("Upgrade failed")
 
@@ -114,19 +123,30 @@ Bun.serve({
     open(ws) {
       console.log("Websocket opened")
       ws.subscribe(topic)
-      ws.send(messageStream("Someone joined the chat"))
+      sockets.push(ws)
+      sockets.forEach(socket => {
+        socket.send(messageStream(`${ws.data.username} joined the chat`))
+      })
     },
     message(ws, message) {
+      console.log(ws)
       console.log("Websocket received: ", message)
       if (typeof message == "string" && message.trim() === "") return
       ws.send(messageStream(`SOME MESSAGE: ${message}`))
     },
     close(ws) {
       console.log("Websocket closed")
-      ws.send(messageStream("Someone left the chat"))
+      ws.unsubscribe(topic)
+      sockets.forEach(socket => {
+        socket.send(messageStream(`${ws.data.username} left the chat`))
+      })
+      const socketIndex = sockets.indexOf(ws)
+      if (socketIndex > -1) {
+        sockets.splice(socketIndex, 1)
+      }
     },
-    // publishToSelf: true
+    publishToSelf: true
   }
 });
 
-console.log("Bun is running on http://localhost:8080")
+console.log(`Bun is running on http://localhost:${port}`)
