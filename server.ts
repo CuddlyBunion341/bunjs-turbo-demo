@@ -1,7 +1,3 @@
-const headers = {
-  "Content-Type": "text/html",
-}
-
 const layout = (title: string, content: string) => `
   <html>
     <head>
@@ -43,8 +39,12 @@ Bun.serve({
     if (server.upgrade(req)) { return }
 
     const url = new URL(req.url);
-    if (url.pathname === "/") return new Response(layout("Chatroom",chatRoomHTML()), {headers});
-    if (url.pathname === "/client.js") return new Response(Bun.file("./client.js"), {headers: {"Content-Type": "text/javascript"}});
+    if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML()), {
+      headers: {
+        "Content-Type": "text/html",
+      }
+    });
+    if (url.pathname === "/client.js") return new Response(Bun.file("./client.js"), { headers: { "Content-Type": "text/javascript" } });
     return new Response("404!");
   },
   websocket: {
