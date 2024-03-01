@@ -9,7 +9,7 @@ const layout = (title: string, content: string) => `
       <script type="module">
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
-      <turbo-stream-source src="http://localhost:8080/subscribe" />
+      <turbo-stream-source src="ws://localhost:8080/subscribe" />
     </head>
     <body>
       <div class="container">
@@ -72,7 +72,7 @@ Bun.serve({
 
       server.publish(topic, messageStream(chatMessage))
 
-      return new Response(messageStream(chatMessage), { headers: { "Content-Type": "text/vnd.turbo-stream.html", } });
+      return new Response("", { status: 204 })
     }
 
     if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML()), {
