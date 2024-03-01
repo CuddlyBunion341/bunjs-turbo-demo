@@ -24,25 +24,26 @@ const messageHTML = (message: string) => `
   </p>
 `
 
+const chatRoomHTML = () => `
+  <p>This is a chatroom</p>
+  <mark id="connection-status"></mark>
+  <div id="chat-feed"></div>
+  <form id="chat-form">
+    <label for="message-input">Message</label>
+    <input id="message-input" name="message">
+    <input type="submit" value="Send">
+  </form>
+`
+
 const topic = "my-topic";
 
 Bun.serve({
   port: 8080,
   fetch(req, server) {
-    if (server.upgrade(req)) {
-      return
-    }
+    if (server.upgrade(req)) { return }
 
     const url = new URL(req.url);
-    if (url.pathname === "/") return new Response(layout("Chatroom", `
-    <p>This is a chatroom</p>
-    <mark id="connection-status"></mark>
-    <div id="chat-feed"></div>
-    <form id="chat-form">
-      <label for="message-input">Message</label>
-      <input id="message-input" name="message">
-      <input type="submit" value="Send">
-    </form>`), {headers});
+    if (url.pathname === "/") return new Response(layout("Chatroom",chatRoomHTML()), {headers});
     if (url.pathname === "/client.js") return new Response(Bun.file("./client.js"), {headers: {"Content-Type": "text/javascript"}});
     return new Response("404!");
   },
