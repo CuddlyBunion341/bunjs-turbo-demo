@@ -9,6 +9,7 @@ const layout = (title: string, content: string) => `
       <script type="module">
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
+      <turbo-stream-source src="http://localhost:8080/subscribe" />
     </head>
     <body>
       <div class="container">
@@ -53,6 +54,12 @@ Bun.serve({
   async fetch(req, server) {
     const url = new URL(req.url);
 
+   if (url.pathname === "/subscribe") {
+      if (server.upgrade(req)) { return }
+      console.log("Could not upgrade")
+      return new Response("Could not upgrade", { status: 500 })
+    }
+
     if (url.pathname === "/submit") {
       const formData = await req.formData()
       const message = formData.get("message")
@@ -61,12 +68,12 @@ Bun.serve({
       if (message.trim() === "") return new Response("", { status: 204 })
 
       const chatMessage = `Anonymous: ${message}`
-
       messages.push(chatMessage)
+
+      server.publish(topic, messageStream(chatMessage))
+
       return new Response(messageStream(chatMessage), { headers: { "Content-Type": "text/vnd.turbo-stream.html", } });
     }
-
-    if (server.upgrade(req)) { return }
 
     if (url.pathname === "/") return new Response(layout("Chatroom", chatRoomHTML()), {
       headers: {
@@ -85,7 +92,7 @@ Bun.serve({
     message(ws, message) {
       console.log("Websocket received: ", message)
       if (typeof message == "string" && message.trim() === "") return
-      ws.publishText(topic, messageStream(`Anonymous: ${message}`))
+      ws.publishText(topic, messageStream(`SOME MESSAGE: ${message}`))
     },
     close(ws) {
       console.log("Websocket closed")
