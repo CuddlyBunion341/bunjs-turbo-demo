@@ -1,6 +1,6 @@
 import type { Server, ServerWebSocket } from "bun";
 
-const layout = (title: string, content: string, options: {clientId: string, username: string}) => `
+const layoutHTML = (title: string, content: string, options: {clientId: string, username: string}) => `
   <html>
     <head>
       <title>${title}</title>
@@ -146,7 +146,7 @@ const handleSubmission = async (req: Request, server: Server) => {
 const handleRoot = () => {
   const clientId = generateUUID()
   const username = generateUniqueUsername(users)
-  return new Response(layout("ChatRoom", chatRoomHTML(clientId), {clientId, username}), { headers: { "Content-Type": "text/html" }})
+  return new Response(layoutHTML("ChatRoom", chatRoomHTML(clientId), {clientId, username}), { headers: { "Content-Type": "text/html" }})
 }
 
 const topic = "my-topic";
