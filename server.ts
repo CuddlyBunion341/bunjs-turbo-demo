@@ -1,4 +1,4 @@
-import type { ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket } from "bun";
 
 const layout = (title: string, content: string, options: {clientId: string, username: string}) => `
   <html>
@@ -9,6 +9,14 @@ const layout = (title: string, content: string, options: {clientId: string, user
         import hotwiredTurbo from 'https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.3/+esm'
       </script>
       <script src="./client.js" type="module" defer></script>
+      <style>
+        body {
+          align-content: center;
+          top: 0;
+          position: absolute;
+          width: 100%;
+        }
+      </style>
     </head>
     <body>
       <header>
@@ -16,11 +24,12 @@ const layout = (title: string, content: string, options: {clientId: string, user
         <p>Bring your application to live with turbo streams!</p>
       </header>
       <main>
-        <h2>${title}</h2>
         ${content}
       </main>
       <footer>
-        Provided to you by <a href="https://github.com/CuddlyBunion341">CuddlyBunion341</a> @ <a href="https://www.renuo.ch/">Renuo AG</a>
+        <p>
+          Provided to you by <a href="https://github.com/CuddlyBunion341">CuddlyBunion341</a> @ <a href="https://www.renuo.ch/">Renuo AG</a>
+        </p>
       </footer>
       <turbo-stream-source src="ws://localhost:${port}/subscribe?clientId=${options.clientId}&username=${options.username}" />
     </body>
@@ -57,7 +66,9 @@ const userHTML = (username: string) => `
 `
 
 const chatRoomHTML = (clientId: string) => `
-  <p>This is a chatroom</p>
+  <h2>Chatroom Demo</h2>
+  <p>This is a simple ChatRoom built using turbo streams and stimulus.</p>
+  <hr>
   <strong>Users in Chat:</strong>
   <ul id="user-list">
     ${Object.values(users).map(userHTML).join("")}
@@ -66,7 +77,7 @@ const chatRoomHTML = (clientId: string) => `
   <div id="chat-feed">
   </div>
   <form id="chat-form" action="/submit" method="post" data-controller="form" data-action="form#handleSubmit">
-    <label for="message-input">Message</label>
+    <label for="message-input">Message:</label>
     <input id="message-input" name="message" data-form-target="input" required >
     <input type="hidden" name="clientId" value="${clientId}">
     <input type="submit" value="Send">
@@ -97,6 +108,44 @@ const generateUniqueUsername = (users: Record<ClientId, Username>) => {
   }
 }
 
+
+const handleSubscription = (req: Request, server: Server) => {
+  const url = new URL(req.url);
+  const clientId = url.searchParams.get("clientId")
+  if (!clientId) return new Response("Invalid clientId", { status: 400 })
+
+  let username = url.searchParams.get("username")
+  if (!username) username = generateUniqueUsername(users)
+
+  users[clientId] = username
+
+  if (server.upgrade(req, { data: { username, clientId: clientId } })) { return }
+  return new Response("Could not upgrade", { status: 500 })
+}
+
+const handleSubmission = async (req: Request, server: Server) => {
+  const formData = await req.formData()
+  const message = formData.get("message")
+  const clientId = formData.get("clientId")
+  if (typeof clientId !== "string") return new Response("Invalid clientId", { status: 400 })
+
+  const username = users[clientId]
+
+  if (typeof message !== "string" || message.trim() === "") return new Response("Invalid message", { status: 400 })
+
+  sockets.forEach(socket => {
+    socket.send(streamMessage(`${username}: ${message}`, socket.data.username === username))
+  })
+
+  return new Response("", { status: 204 })
+}
+
+const handleRoot = () => {
+  const clientId = generateUUID()
+  const username = generateUniqueUsername(users)
+  return new Response(layout("ChatRoom", chatRoomHTML(clientId), {clientId, username}), { headers: { "Content-Type": "text/html" }})
+}
+
 const topic = "my-topic";
 
 type ClientId = string
@@ -114,65 +163,41 @@ Bun.serve<ServerData>({
   async fetch(req, server) {
     const url = new URL(req.url);
 
-    if (url.pathname === "/subscribe") {
-      const clientId = url.searchParams.get("clientId")
-      if (!clientId) return new Response("Invalid clientId", { status: 400 })
-
-      let username = url.searchParams.get("username")
-      if (!username) username = generateUniqueUsername(users)
-
-      users[clientId] = username
-
-      if (server.upgrade(req, { data: { username, clientId: clientId } })) { return }
-      return new Response("Could not upgrade", { status: 500 })
+    switch(url.pathname) {
+      case "/subscribe":
+        return handleSubscription(req, server)
+      case "/submit":
+        return handleSubmission(req, server)
+      case "/":
+        return handleRoot()
+      case "/client.js":
+        return new Response(Bun.file("./client.js"), { headers: { "Content-Type": "text/javascript" } });
+      default:
+        return new Response("404 Not Found", { status: 404 });
     }
-
-    if (url.pathname === "/submit") {
-      const formData = await req.formData()
-      const message = formData.get("message")
-      const clientId = formData.get("clientId")
-      if (typeof clientId !== "string") return new Response("Invalid clientId", { status: 400 })
-
-      const username = users[clientId]
-
-      if (typeof message !== "string" || message.trim() === "") return new Response("Invalid message", { status: 400 })
-
-      sockets.forEach(socket => {
-        socket.send(streamMessage(`${username}: ${message}`, socket.data.username === username))
-      })
-
-      return new Response("", { status: 204 })
-    }
-
-    if (url.pathname === "/") {
-      const clientId = generateUUID()
-      const username = generateUniqueUsername(users)
-      return new Response(layout("ChatRoom", chatRoomHTML(clientId), {clientId, username}), { headers: { "Content-Type": "text/html" }})
-    }
-
-    if (url.pathname === "/client.js") return new Response(Bun.file("./client.js"), { headers: { "Content-Type": "text/javascript" } });
-    return new Response("404!");
   },
   websocket: {
     open(ws) {
-      ws.subscribe(topic)
-      sockets.push(ws)
+      ws.subscribe(topic);
+      sockets.push(ws);
       sockets.forEach(socket => {
-        socket.send(streamMessage(`${ws.data.username} joined the chat`, socket.data.username === ws.data.username))
-        socket.send(streamHTML(`<li id="user-${ws.data.username}">${ws.data.username}</li>`, { action: "append", target: "user-list" }))
-      })
+        const isOwnSocket = socket.data.username === ws.data.username;
+        socket.send(streamMessage(`${ws.data.username} joined the chat`, isOwnSocket));
+        socket.send(streamHTML(userHTML(socket.data.username), { action: "append", target: "user-list" }));
+      });
     },
     message(ws, message) { },
     close(ws) {
       sockets.forEach(socket => {
-        socket.send(streamHTML(``, { action: "remove", target: `user-${ws.data.username}` }))
-        socket.send(streamMessage(`${ws.data.username} left the chat`, socket.data.username === ws.data.username))
-      })
-      delete users[ws.data.clientId]
-      ws.unsubscribe(topic)
-      const socketIndex = sockets.indexOf(ws)
+        const isOwnSocket = socket.data.username === ws.data.username;
+        socket.send(streamHTML(``, { action: "remove", target: `user-${ws.data.username}` }));
+        socket.send(streamMessage(`${ws.data.username} left the chat`, isOwnSocket));
+      });
+      delete users[ws.data.clientId];
+      ws.unsubscribe(topic);
+      const socketIndex = sockets.indexOf(ws);
       if (socketIndex > -1) {
-        sockets.splice(socketIndex, 1)
+        sockets.splice(socketIndex, 1);
       }
     },
     publishToSelf: true
