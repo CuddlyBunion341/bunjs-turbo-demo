@@ -78,7 +78,7 @@ const chatRoomHTML = (clientId: string) => `
   </div>
   <form id="chat-form" action="/submit" method="post" data-controller="form" data-action="turbo:submit-end->form#clear">
     <label for="message-input">Message:</label>
-    <input id="message-input" name="message" data-form-target="input" required >
+    <input name="message" data-form-target="input" required >
     <input type="hidden" name="clientId" value="${clientId}">
     <input type="submit" value="Send">
   </form>
