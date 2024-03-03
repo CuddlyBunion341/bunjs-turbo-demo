@@ -13,3 +13,6 @@ bun run index.ts
 ```
 
 This project was created using `bun init` in bun v1.0.2. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+
+## License
+This project is licensed under the MIT license. Take a look at [LICENSE] for more information.
