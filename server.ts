@@ -52,9 +52,7 @@ const ownMessageHTML = (message: string) => `
 
 const streamHTML = (content: string, options = { action: "append", target: "chat-feed" }) => `
   <turbo-stream action="${options.action}" target="${options.target}">
-    <template>
-      ${content}
-    </template>
+    ${options.action === "remove" ? "" : `<template>${content}</template>`}
   </turbo-stream>
 `
 
@@ -62,7 +60,7 @@ const streamMessage = (message: string, own: boolean, streamOptions = { action: 
   streamHTML(own ? ownMessageHTML(message) : messageHTML(message), streamOptions)
 
 const userHTML = (username: string) => `
-  <li id="user-${username}">${username}</li>
+  <li>${username}</li>
 `
 
 const chatRoomHTML = (clientId: string) => `
@@ -70,9 +68,7 @@ const chatRoomHTML = (clientId: string) => `
   <p>This is a simple ChatRoom built using turbo streams and stimulus.</p>
   <hr>
   <strong>Users in Chat:</strong>
-  <ul id="user-list">
-    ${Object.values(users).map(userHTML).join("")}
-  </ul>
+    ${userListHTML(users)}
   <hr>
   <div id="chat-feed">
   </div>
@@ -84,6 +80,13 @@ const chatRoomHTML = (clientId: string) => `
   </form>
 `
 
+const userListHTML = (users: Record<ClientId, Username>) => `
+  <ul id="user-list">
+    ${((users: Record<ClientId, Username>) => Object.values(users).map(userHTML).join(""))(users)}
+  </ul>
+`
+
+const streamUserListHTML = (users: Record<ClientId, Username>) => streamHTML(userListHTML(users), { action: "replace", target: "user-list" })
 
 const generateUUID = () => {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
@@ -156,7 +159,7 @@ const port = 8080
 
 type ServerData = { username: string, clientId: string }
 
-const sockets: ServerWebSocket<ServerData>[] = []
+let sockets: ServerWebSocket<ServerData>[] = []
 
 Bun.serve<ServerData>({
   port,
@@ -181,23 +184,25 @@ Bun.serve<ServerData>({
       ws.subscribe(topic);
       sockets.push(ws);
       sockets.forEach(socket => {
+        socket.send(streamUserListHTML(users))
+
         const isOwnSocket = socket.data.username === ws.data.username;
         socket.send(streamMessage(`${ws.data.username} joined the chat`, isOwnSocket));
-        socket.send(streamHTML(userHTML(socket.data.username), { action: "append", target: "user-list" }));
       });
     },
     message(ws, message) { },
     close(ws) {
+      delete users[ws.data.clientId];
       sockets.forEach(socket => {
+        socket.send(streamUserListHTML(users))
+
         const isOwnSocket = socket.data.username === ws.data.username;
-        socket.send(streamHTML(``, { action: "remove", target: `user-${ws.data.username}` }));
         socket.send(streamMessage(`${ws.data.username} left the chat`, isOwnSocket));
       });
-      delete users[ws.data.clientId];
       ws.unsubscribe(topic);
       const socketIndex = sockets.indexOf(ws);
       if (socketIndex > -1) {
-        sockets.splice(socketIndex, 1);
+        sockets = sockets.splice(socketIndex, 1);
       }
     },
     publishToSelf: true
